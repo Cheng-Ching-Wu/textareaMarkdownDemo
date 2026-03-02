@@ -2,11 +2,6 @@
   <div class="notion-app-container">
     <div class="editor-shell">
       
-      <block-side-menu 
-        v-if="editor" 
-        :editor="editor" 
-      />
-      
       <div class="editor-content-wrapper">
         <editor-content :editor="editor" />
       </div>
@@ -18,13 +13,11 @@
 <script>
 import { Editor, EditorContent } from '@tiptap/vue-2'
 import { getExtensions } from './editor-extensions'
-import BlockSideMenu from './BlockSideMenu.vue'
 
 export default {
   name: 'NotionEditor',
   components: {
     EditorContent,
-    BlockSideMenu,
   },
   props: {
     value: {
@@ -93,7 +86,7 @@ export default {
   width: 100%;
   max-width: 800px;
   // 關鍵：左側 padding 必須與 BlockSideMenu 的位移對應
-  padding-left: 0px;
+  padding-left: 54px;
 }
 
 // 深度作用於 Tiptap 生成的 HTML
@@ -123,8 +116,9 @@ export default {
   p { margin: 3px 0; }
 
   // 標題樣式優化
-  h1 { font-size: 1.875em; font-weight: 700; line-height: 1.3; }
-  h2 { font-size: 1.5em; font-weight: 600; line-height: 1.3; }
+  h1 { font-size: 1.875em; font-weight: 700; line-height: 1.3; margin: 4px 0px }
+  h2 { font-size: 1.5em; font-weight: 600; line-height: 1.3; margin: 4px 0px }
+  h3 { font-size: 1.25em; font-weight: 500; line-height: 1.3; margin: 4px 0px }
 
   // 待辦清單 (TaskList) 樣式
   ul[data-type="taskList"] {
@@ -182,7 +176,7 @@ export default {
     font-size: 85%;
   }
 
-  // 表格 (Table)
+  // 表格 (Tabl-e)
   table {
     border-collapse: collapse;
     table-layout: fixed;
