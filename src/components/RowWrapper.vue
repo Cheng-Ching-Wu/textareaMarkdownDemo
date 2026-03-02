@@ -158,40 +158,90 @@ export default {
     onMouseDown(event) {
       // 關鍵：阻止事件冒泡，避免 ProseMirror 接收到 mousedown 後將選取範圍重置為表格內部的 CellSelection
       event.stopPropagation()
-      // 在拖曳開始前，先確保選中該節點。這能避免「只拖曳到表格內容，導致原表格變空」的問題。
-      this.editor.commands.setNodeSelection(this.getPos())
+      
+      // 檢查是否在 List 內，如果是，則選中整個 ListItem
+      const { state } = this.editor
+      const pos = this.getPos()
+      const $pos = state.doc.resolve(pos)
+      if ($pos.parent.type.name === 'listItem') {
+        this.editor.commands.setNodeSelection($pos.before($pos.depth))
+      } else {
+        this.editor.commands.setNodeSelection(pos)
+      }
     },
     onDragStart(event) {
       // 1. 阻止冒泡，手動接管拖曳
       event.stopPropagation()
 
       const { view } = this.editor
-      
-      // 2. 建立 Slice (onMouseDown 已確保選中整個表格)
-      const slice = view.state.selection.content()
+      const pos = this.getPos()
+      let dragDom = view.nodeDOM(pos)
+      let html = ''
 
-      // 3. 關鍵策略：使用「複製模式 (move: false)」來繞過 ProseMirror 的自動刪除邏輯
-      // 因為 prosemirror-tables 可能會干擾選取範圍，導致自動刪除只清空內容。
-      // 我們改在 onDragEnd 中手動刪除原始節點。
-      view.dragging = { slice, move: false }
+      // 2. 嘗試從 DOM 構建完整的 HTML 結構
+      // 這比手動操作 Slice 更穩健，因為 ProseMirror 的 HTML Parser 能自動處理 List 的合併與建立
+      const { state } = this.editor
+      const $pos = state.doc.resolve(pos)
 
-      // 4. 設定原生拖曳資料
-      const dom = view.nodeDOM(this.getPos())
-      event.dataTransfer.effectAllowed = 'move'
-      event.dataTransfer.setData('text/plain', this.node.textContent)
-      if (dom) {
-        event.dataTransfer.setDragImage(dom, 0, 0)
-        event.dataTransfer.setData('text/html', dom.outerHTML)
+      // 如果在 List 內，抓取整個 LI 並包裹在 UL/OL 中
+      if ($pos.parent.type.name === 'listItem') {
+        const li = this.$el.closest('li')
+        if (li && li.parentElement) {
+          const listParent = li.parentElement
+          // 複製 LI
+          const liClone = li.cloneNode(true)
+          // 複製父層 List (UL/OL) 的標籤與屬性 (如 start, type)
+          const wrapper = listParent.cloneNode(false)
+          wrapper.appendChild(liClone)
+          
+          html = wrapper.outerHTML
+          dragDom = li // 讓拖曳影像顯示整個 LI
+        }
       }
+
+      // 如果沒抓到 List HTML (或是普通段落)，則使用預設 DOM
+      if (!html && dragDom && dragDom.nodeType === 1) {
+        html = dragDom.outerHTML
+      }
+
+      // 3. 設定 DataTransfer
+      event.dataTransfer.effectAllowed = 'copyMove'
+      event.dataTransfer.setData('text/html', html)
+      event.dataTransfer.setData('text/plain', this.node.textContent)
+      
+      if (dragDom && dragDom.nodeType === 1) {
+        event.dataTransfer.setDragImage(dragDom, 0, 0)
+      }
+
+      // 4. 關鍵：不設定 view.dragging
+      // 讓 ProseMirror 將此視為外部 HTML Drop，觸發 Parser 邏輯，解決 List 結構問題
+      view.dragging = null
     },
     onDragEnd(event) {
       this.editor.view.dragging = null
-      // 如果拖曳成功 (dropEffect 為 move)，則手動刪除原始節點
-      if (event.dataTransfer.dropEffect === 'move') {
-        const pos = this.getPos()
-        if (typeof pos === 'number') {
-          this.editor.commands.deleteRange({ from: pos, to: pos + this.node.nodeSize })
-        }
+      
+      const { dropEffect } = event.dataTransfer
+      const isExplicitCopy = event.ctrlKey || event.altKey || event.metaKey
+
+      // 如果是移動操作 (move) 或 瀏覽器回傳 copy 但使用者沒按複製鍵 (視為移動)，則執行刪除
+      if (dropEffect === 'move' || (dropEffect === 'copy' && !isExplicitCopy)) {
+        // 使用 setTimeout 確保 Drop 交易已完成，避免狀態衝突
+        setTimeout(() => {
+          const pos = this.getPos()
+          if (typeof pos === 'number') {
+            const { state } = this.editor
+            const $pos = state.doc.resolve(pos)
+            
+            // 如果是清單項目，選中整個 ListItem 進行刪除
+            if ($pos.parent.type.name === 'listItem') {
+              const listItemPos = $pos.before($pos.depth)
+              this.editor.chain().setNodeSelection(listItemPos).deleteSelection().run()
+            } else {
+              // 一般區塊直接刪除
+              this.editor.chain().setNodeSelection(pos).deleteSelection().run()
+            }
+          }
+        }, 0)
       }
     }
   }
