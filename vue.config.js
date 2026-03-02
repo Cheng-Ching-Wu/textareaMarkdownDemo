@@ -1,13 +1,18 @@
 // vue.config.js
-
 const { defineConfig } = require('@vue/cli-service')
 
 module.exports = defineConfig({
+  // 1. 關鍵修正：設定生產環境下的資源路徑
+  // 必須與你的倉庫名稱 "textareaMarkdownDemo" 完全一致
+  publicPath: process.env.NODE_ENV === 'production'
+    ? '/textareaMarkdownDemo/'
+    : '/',
+
   transpileDependencies: [
-    // 告訴 Babel 專門去處理 node_modules 裡的 milkdown 相關套件
+    // 雖然改用 Tiptap 了，但保留這行不會有影響
     '@milkdown'
   ],
-  // 如果你的 Webpack 在處理 ESM 模組時還有問題，可以加入這段 (選填)
+
   configureWebpack: {
     module: {
       rules: [
