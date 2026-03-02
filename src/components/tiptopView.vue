@@ -75,9 +75,6 @@ export default {
   display: flex;
   justify-content: center;
   background-color: #fff;
-  border: 1px solid #e1e1e1;
-  border-radius: 8px;
-
 }
 
 // 核心殼層：定義 Notion 寬度與左側按鈕空間
@@ -87,6 +84,8 @@ export default {
   max-width: 800px;
   // 關鍵：左側 padding 必須與 BlockSideMenu 的位移對應
   padding-left: 54px;
+  border: 1px solid #e1e1e1;
+  border-radius: 8px;
 }
 
 // 深度作用於 Tiptap 生成的 HTML
