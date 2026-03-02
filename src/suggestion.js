@@ -31,6 +31,17 @@ export default {
           editor.chain().focus().deleteRange(range).setCodeBlock({ language: 'javascript' }).run()
         }
       },
+      {
+        title: '表格',
+        command: ({ editor, range }) => {
+          editor
+            .chain()
+            .focus()
+            .deleteRange(range) // 刪除輸入的 / 符號
+            .insertTable({ rows: 3, cols: 3, withHeaderRow: true }) // 插入 3x3 表格
+            .run()
+        },
+      },
     ].filter(item => item.title.toLowerCase().startsWith(query.toLowerCase()))
   },
 

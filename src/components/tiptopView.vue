@@ -1,88 +1,71 @@
 <template>
-  <div v-if="editor" class="tiptap-wrapper">
-    <editor-content :editor="editor" class="editor-content" />
+  <div class="notion-app-container">
+    <div class="editor-shell">
+      
+      <block-side-menu 
+        v-if="editor" 
+        :editor="editor" 
+      />
+      
+      <div class="editor-content-wrapper">
+        <editor-content :editor="editor" />
+      </div>
+
+    </div>
   </div>
 </template>
 
 <script>
-import { VueNodeViewRenderer } from '@tiptap/vue-2'
-import { Editor, EditorContent, Extension } from '@tiptap/vue-2'
-import StarterKit from '@tiptap/starter-kit'
-import Suggestion from '@tiptap/suggestion'
-import TaskList from '@tiptap/extension-task-list'
-import TaskItem from '@tiptap/extension-task-item'
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
-import { common, createLowlight } from 'lowlight'
-import suggestionConfig from '@/suggestion.js'
-
-import CodeBlockComponent from './CodeBlockComponent.vue'
-
-// 初始化語法高亮 (只載入常用語言，如 JS, CSS, HTML)
-const lowlight = createLowlight(common)
-
-const Commands = Extension.create({
-  name: 'slash-commands',
-  addOptions() {
-    return {
-      suggestion: {
-        char: '/',
-        ...suggestionConfig,
-      },
-    }
-  },
-  addProseMirrorPlugins() {
-    return [
-      Suggestion({
-        editor: this.editor,
-        ...this.options.suggestion,
-      }),
-    ]
-  },
-})
+import { Editor, EditorContent } from '@tiptap/vue-2'
+import { getExtensions } from './editor-extensions'
+import BlockSideMenu from './BlockSideMenu.vue'
 
 export default {
+  name: 'NotionEditor',
   components: {
     EditorContent,
+    BlockSideMenu,
   },
-  props: ['value'],
+  props: {
+    value: {
+      type: String,
+      default: '',
+    },
+  },
   data() {
     return {
       editor: null,
     }
   },
   watch: {
-    value(value) {
-      const isSame = this.editor.getHTML() === value
-      if (isSame) return
-      this.editor.commands.setContent(value, false)
+    // 嚴格比對內容，防止在協作或複雜更新時游標跳轉
+    value(newValue) {
+      if (!this.editor) return
+      const isSame = this.editor.getHTML() === newValue
+      if (!isSame) {
+        this.editor.commands.setContent(newValue, false)
+      }
     },
   },
   mounted() {
-    this.editor = new Editor({
-      content: this.value,
-      extensions: [
-        // 1. 禁用 StarterKit 內建的 codeBlock (避免衝突)
-        StarterKit.configure({
-          codeBlock: false,
-        }),
-        // 2. 啟用帶有高亮功能的版本
-        CodeBlockLowlight.extend({
-          // 這裡告訴 Tiptap 使用自定義組件
-          addNodeView() {
-            return VueNodeViewRenderer(CodeBlockComponent)
-          },
-        }).configure({ lowlight }),
-        Commands,
-        // --- 關鍵修復：在這裡正式註冊功能 ---
-        TaskList,
-        TaskItem.configure({
-          nested: true, // 允許巢狀結構，像是按 Tab 縮排
-        }),
-      ],
-      onUpdate: () => {
-        this.$emit('input', this.editor.getHTML())
-      },
-    })
+    this.initEditor()
+  },
+  methods: {
+    initEditor() {
+      this.editor = new Editor({
+        content: this.value,
+        // 匯入從 editor-extensions.js 整理好的擴充套件
+        extensions: getExtensions(),
+        // 當內容變動時通知父組件 (支援 v-model)
+        onUpdate: ({ editor }) => {
+          this.$emit('input', editor.getHTML())
+        },
+        // 聚焦時可增加特定樣式
+        onFocus: () => {
+          this.$emit('focus')
+        }
+      })
+    },
   },
   beforeDestroy() {
     if (this.editor) {
@@ -93,90 +76,164 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tiptap-wrapper {
-  border: 1px solid #e2e8f0;
+// 外層容器：負責頁面間距
+.notion-app-container {
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  background-color: #fff;
+  border: 1px solid #e1e1e1;
   border-radius: 8px;
-  padding: 10px 20px;
-  background: white;
-  min-height: 400px;
-  text-align: left;
+
 }
 
-::v-deep .ProseMirror:focus {
-  outline: none;
+// 核心殼層：定義 Notion 寬度與左側按鈕空間
+.editor-shell {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  // 關鍵：左側 padding 必須與 BlockSideMenu 的位移對應
+  padding-left: 0px;
 }
 
-/* --- 內容樣式設計 --- */
+// 深度作用於 Tiptap 生成的 HTML
 ::v-deep .ProseMirror {
-  min-height: 380px;
+  outline: none;
+  min-height: 600px;
+  padding-bottom: 30vh; // 底部留白，方便最後一行編輯
+  
+  // 文字基礎設定
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #37352f;
+  word-break: break-word;
+  text-align: left;
 
-  p.is-editor-empty:first-child::before {
+  // Placeholder 邏輯
+  &.is-editor-empty:first-child::before {
     content: '輸入 / 喚起功能選單...';
     float: left;
-    color: #adb5bd;
+    color: rgba(55, 53, 47, 0.2);
     pointer-events: none;
     height: 0;
   }
 
-  h1 { font-size: 2rem; margin-top: 0.5rem; }
-  h2 { font-size: 1.5rem; margin-top: 0.5rem; }
+  // 段落樣式
+  p { margin: 3px 0; }
 
-  /* --- TaskList 專屬樣式 (讓它更像 Notion) --- */
+  // 標題樣式優化
+  h1 { font-size: 1.875em; font-weight: 700; line-height: 1.3; }
+  h2 { font-size: 1.5em; font-weight: 600; line-height: 1.3; }
+
+  // 待辦清單 (TaskList) 樣式
   ul[data-type="taskList"] {
     list-style: none;
     padding: 0;
+    margin: 4px 0;
 
     li {
       display: flex;
-      align-items: center;
-      margin-bottom: 0.5rem;
-
-      > label {
-        flex: 0 0 auto;
-        margin-right: 0.5rem;
+      align-items: flex-start;
+      margin: 2px 0;
+      
+      label {
+        display: flex;
+        align-items: center;
+        height: 24px; // 與文字行高對齊
+        margin-right: 8px;
         user-select: none;
-        /* 隱藏預設 input 渲染，改用自定義外觀或直接顯示預設 checkbox */
-      }
-
-      > div {
-        flex: 1 1 auto;
       }
 
       input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
         cursor: pointer;
-        width: 1.2rem;
-        height: 1.2rem;
-        margin-top: 0.2rem;
+        accent-color: #2383e2; // Notion 藍
       }
+
+      div { flex: 1; p { margin: 0; } }
+    }
+  }
+
+  // 程式碼塊 (Code Block)
+  pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 2em 1.2em 1.2em;
+    border-radius: 8px;
+    margin: 1.5em 0;
+    overflow-x: auto;
+    
+    code { 
+      background: transparent; 
+      padding: 0; 
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.9em;
+    }
+  }
+
+  // 行內代碼
+  code {
+    background: rgba(135, 131, 120, 0.15);
+    color: #eb5757;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 85%;
+  }
+
+  // 表格 (Table)
+  table {
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    margin: 1em 0;
+    overflow: hidden;
+
+    td, th {
+      min-width: 1em;
+      border: 1px solid #e2e2e3;
+      padding: 7px 10px;
+      vertical-align: top;
+      box-sizing: border-box;
+      position: relative;
+
+      > * { margin-bottom: 0; }
+    }
+
+    th {
+      font-weight: 600;
+      text-align: left;
+      background-color: #f7f6f3; // Notion 標題列底色
+    }
+
+    // 選取單元格時的藍色高亮
+    .selectedCell:after {
+      z-index: 2;
+      content: "";
+      position: absolute;
+      left: 0; right: 0; top: 0; bottom: 0;
+      background: rgba(35, 131, 226, 0.07);
+      pointer-events: none;
+    }
+
+    // 調整欄寬的把手樣式
+    .column-resize-handle {
+      position: absolute;
+      right: -2px; top: 0; bottom: 0;
+      width: 4px;
+      z-index: 20;
+      background-color: #2383e2;
+      pointer-events: none;
     }
   }
 }
 
-::v-deep .ProseMirror {
-  .code-block {
-    pre {
-      background: #1e1e1e; /* 深色背景 */
-      color: #d4d4d4;
-      border-radius: 8px;
-      padding: 1.5rem 1rem 1rem;
-      margin: 1.2rem 0;
-      position: relative;
-      overflow-x: auto;
-
-      code {
-        font-family: 'Fira Code', 'Consolas', monospace;
-        font-size: 0.9rem;
-        background: none;
-        padding: 0;
-      }
-    }
-  }
-
-  /* 語法高亮顏色 (VS Code 風格) */
+// 語法高亮 (VS Code 黑色風格)
+::v-deep {
   .hljs-keyword { color: #569cd6; }
   .hljs-string { color: #ce9178; }
   .hljs-comment { color: #6a9955; font-style: italic; }
   .hljs-function { color: #dcdcaa; }
-  .hljs-number { color: #b5cea8; }
 }
 </style>
