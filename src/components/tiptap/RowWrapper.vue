@@ -11,7 +11,7 @@
       <!-- 區塊功能選單 (Block Menu) -->
       <div v-if="showMenu" class="block-menu-overlay" @click="closeMenu"></div>
       <div v-if="showMenu" class="block-menu">
-        <div class="menu-item delete-item" @click="deleteNode">
+        <div class="menu-item delete-item" @click="removeNode">
           <span class="icon">🗑️</span> 刪除
         </div>
         <div class="menu-divider"></div>
@@ -60,7 +60,7 @@
       <pre><code><node-view-content /></code></pre>
     </div>
     <!-- 一般節點 (Paragraph, Heading) -->
-    <node-view-content v-else class="content-runtime" :as="contentTag" />
+    <node-view-content v-else class="content-runtime" :class="headingClass" :as="contentTag" />
   </node-view-wrapper>
 </template>
 
@@ -99,6 +99,9 @@ export default {
         return `h${this.node.attrs.level}`
       }
       return 'p'
+    },
+    headingClass() {
+      return ''
     }
   },
   mounted() {
@@ -107,21 +110,46 @@ export default {
     this.editor.on('focus', this.checkFocus)
     this.editor.on('blur', this.checkFocus)
     // 監聽 transaction 以確保結構變更 (如 Tab 縮排) 時能即時更新狀態
-    this.editor.on('transaction', this.checkListStatus)
-    this.checkFocus() // 初始化時先檢查一次
-    this.checkListStatus()
+    this.editor.on('transaction', this.handleTransaction)
+  
+    // 使用遞迴 retry 機制，確保在表格等複雜節點插入後，getPos() 能正確回傳數值
+    // 解決插入表格後，因 getPos() 暫時為 undefined 導致拖曳點消失的問題
+    const initCheck = (attempts = 0) => {
+      if (this._isDestroyed) return
+      const pos = this.getPos()
+      if (typeof pos === 'number') {
+        this.checkFocus()
+        this.checkListStatus()
+      } else if (attempts < 10) { // 重試 10 次，每次間隔 20ms
+        setTimeout(() => initCheck(attempts + 1), 20)
+      }
+    }
+    initCheck()
+  },
+  watch: {
+    // 監聽 node 變化，確保當節點類型改變 (如轉為表格) 時，能重新檢查聚焦狀態
+    node() {
+      this.$nextTick(() => {
+        this.checkFocus()
+        this.checkListStatus()
+      })
+    }
   },
   beforeDestroy() {
     this.editor.off('selectionUpdate', this.checkFocus)
     this.editor.off('focus', this.checkFocus)
     this.editor.off('blur', this.checkFocus)
-    this.editor.off('transaction', this.checkListStatus)
+    this.editor.off('transaction', this.handleTransaction)
   },
   methods: {
     checkFocus() {
       // 如果編輯器本身沒有聚焦，則不顯示拖曳點 (模仿 Notion 行為)
-      if (!this.editor.isFocused) {
-        this.isFocused = false
+      // 移除 isFocused 檢查，避免在點擊選單或插入表格等操作導致焦點暫時丟失時，拖曳點消失
+      // 只要選取範圍在當前節點內，就視為聚焦
+
+      // 如果選單開啟，強制顯示
+      if (this.showMenu) {
+        this.isFocused = true
         return
       }
 
@@ -130,6 +158,9 @@ export default {
       // 簡單判斷：游標選取範圍是否完全落在當前節點內
       if (typeof pos === 'number') {
         this.isFocused = selection.from >= pos && selection.to <= (pos + this.node.nodeSize)
+      } else {
+        // 如果 getPos() 失敗 (例如在節點快速替換的過渡期)，安全起見先隱藏
+        this.isFocused = false
       }
     },
     checkListStatus() {
@@ -138,13 +169,22 @@ export default {
       const $pos = this.editor.state.doc.resolve(pos)
       this.isInsideList = $pos.parent.type.name === 'listItem'
     },
+    handleTransaction() {
+      // 當編輯器狀態更新時，重新檢查此節點的聚焦和清單狀態
+      // 使用 nextTick 確保在 Vue 的下一個更新週期執行，避免與 Tiptap 的渲染衝突
+      this.$nextTick(() => {
+        if (this.editor.isDestroyed || this.getPos() === undefined) return
+        this.checkFocus()
+        this.checkListStatus()
+      })
+    },
     toggleMenu() {
       this.showMenu = !this.showMenu
     },
     closeMenu() {
       this.showMenu = false
     },
-    deleteNode() {
+    removeNode() {
       const pos = this.getPos()
       // 刪除時選中整個節點是正確的
       this.editor.chain().setNodeSelection(pos).deleteSelection().run()
@@ -152,32 +192,49 @@ export default {
     },
     turnInto(type, attrs = {}) {
       const pos = this.getPos()
+      const { editor } = this
       
-      // 1. 關鍵修正：先同步將游標移入該區塊內部 (pos + 1)
-      // 這樣編輯器的狀態 (State) 會立即更新，讓後續的 isActive 判斷正確
-      this.editor.commands.setTextSelection(pos + 1)
-      
-      // 2. 現在判斷會基於正確的游標位置
-      if (type === 'paragraph' && this.editor.isActive('listItem')) {
-        this.editor.commands.liftListItem('listItem')
+      // 解決 H1->H2 等標題層級切換時文字消失的問題
+      // 原因：同 Node Type (heading) 更新時，ProseMirror 重用 NodeView，但 Vue 更改 tag (h1->h2) 導致 DOM 替換且內容遺失。
+      // 解法：透過轉為 paragraph (不同 Node Type) 強制銷毀並重建 NodeView。
+      if (this.node.type.name === 'heading' && type === 'heading' && this.node.attrs.level !== attrs.level) {
+        editor.chain().setNodeSelection(pos).setNode('paragraph').run()
+        
+        // 直接使用閉包中的 pos，不依賴 this.getPos() (因為組件可能已銷毀)
+        if (!editor.isDestroyed) {
+          editor.chain().setNodeSelection(pos).setNode('heading', attrs).setTextSelection(pos + 1).run()
+        }
+        
+        this.closeMenu()
+        return
+      }
+
+      const chain = editor.chain().focus().setTextSelection(pos + 1)
+      if (type === 'paragraph' && this.isInsideList) {
+        chain.liftListItem('listItem')
       } else {
-        this.editor.commands.setNode(type, attrs)
+        chain.setNode(type, attrs)
       }
       
+      chain.run()
       this.closeMenu()
     },
     turnIntoList(type) {
       const pos = this.getPos()
-      // 同樣改為同步執行，確保穩定性
-      this.editor.commands.setTextSelection(pos + 1)
-      this.editor.commands.toggleList(type, 'listItem')
+      this.editor.chain()
+        .focus()
+        .setTextSelection(pos + 1)
+        .toggleList(type, 'listItem')
+        .run()
       this.closeMenu()
     },
     insertTable() {
       const pos = this.getPos()
-      // 確保在當前區塊內插入
-      this.editor.commands.setTextSelection(pos + 1)
-      this.editor.commands.insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+      this.editor.chain()
+        .focus()
+        .setTextSelection(pos + 1)
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+        .run()
       this.closeMenu()
     },
     onMouseDown(event) {

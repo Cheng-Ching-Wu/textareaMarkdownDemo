@@ -13,6 +13,8 @@
 <script>
 import { Editor, EditorContent } from '@tiptap/vue-2'
 import { getExtensions } from './editor-extensions'
+import { VueNodeViewRenderer } from '@tiptap/vue-2'
+import RowWrapper from './RowWrapper.vue'
 
 export default {
   name: 'NotionEditor',
@@ -47,8 +49,22 @@ export default {
     initEditor() {
       this.editor = new Editor({
         content: this.value,
-        // 匯入從 editor-extensions.js 整理好的擴充套件
-        extensions: getExtensions(),
+        // --- FIX START ---
+        // 攔截並修改擴充套件陣列，強制 Table 使用 RowWrapper
+        extensions: getExtensions().map(ext => {
+          // 找到名為 'table' 的擴充套件
+          if (ext.name === 'table') {
+            // 使用 .extend() 來新增 NodeView
+            return ext.extend({
+              addNodeView() {
+                return VueNodeViewRenderer(RowWrapper)
+              },
+            }).configure(ext.options) // 保持原有的 options (例如 resizable)
+          }
+          // 對於其他擴充套件，保持原樣
+          return ext
+        }),
+        // --- FIX END ---
         // 當內容變動時通知父組件 (支援 v-model)
         onUpdate: ({ editor }) => {
           this.$emit('input', editor.getHTML())
@@ -98,7 +114,6 @@ export default {
   // 文字基礎設定
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif;
   font-size: 16px;
-  line-height: 1.5;
   color: #37352f;
   word-break: break-word;
   text-align: left;

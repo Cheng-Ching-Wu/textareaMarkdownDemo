@@ -1,7 +1,7 @@
 // slash-commands-extension.js
 import { Extension } from '@tiptap/vue-2'
-import Suggestion from '@tiptap/suggestion'
-import { suggestionConfig } from '@/suggestion.js' // 這是你原本寫 items 和 render 邏輯的地方
+import suggestionPlugin from '@tiptap/suggestion'
+import { suggestionConfig } from '@/suggestion.js'
 
 export default Extension.create({
   name: 'slash-commands',
@@ -9,17 +9,17 @@ export default Extension.create({
   addOptions() {
     return {
       suggestion: {
-        char: '/', // 觸發字元
-        ...suggestionConfig,
+        char: '/',
+        ...suggestionConfig
       },
     }
   },
 
   addProseMirrorPlugins() {
     return [
-      Suggestion({
+      suggestionPlugin({
         editor: this.editor,
-        ...this.options.suggestion,
+        ...this.options.suggestion
       }),
     ]
   },

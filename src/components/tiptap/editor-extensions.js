@@ -9,14 +9,12 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight'
 import { VueNodeViewRenderer } from '@tiptap/vue-2'
-import { common, createLowlight } from 'lowlight'
+import { lowlight } from 'lowlight'
 
 // 組件匯入
 // import CodeBlockComponent from './CodeBlockComponent.vue'
 import RowWrapper from './RowWrapper.vue' // 直接在此匯入 Wrapper
 import SlashCommands from './slash-commands-extension.js'
-
-const lowlight = createLowlight(common);
 
 export const getExtensions = () => {
   return [
@@ -44,9 +42,7 @@ export const getExtensions = () => {
     TaskList,
     TaskItem.configure({ nested: true }),
     // 修改：讓 Table 也使用 RowWrapper，並保留 resizable 設定
-    Table.extend({
-      addNodeView() { return VueNodeViewRenderer(RowWrapper) }
-    }).configure({ resizable: true }),
+    Table,
     TableRow,
     TableHeader,
     TableCell,
