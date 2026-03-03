@@ -37,6 +37,9 @@
         <div class="menu-item" @click="insertTable">
           <span class="icon">▦</span> 插入表格
         </div>
+        <div class="menu-item" @click="turnInto('codeBlock')">
+          <span class="icon">&lt;&gt;</span> 程式碼
+        </div>
       </div>
     </div>
     
@@ -45,6 +48,16 @@
       <table style="min-width: 100%">
         <node-view-content as="tbody" />
       </table>
+    </div>
+    <!-- 針對 Code Block 的特殊渲染結構 -->
+    <div v-else-if="isCodeBlock" class="code-block-container content-runtime">
+      <select contenteditable="false" v-model="selectedLanguage" class="code-lang-select">
+        <option :value="null">自動偵測</option>
+        <option v-for="(lang, index) in languages" :key="index" :value="lang">
+          {{ lang }}
+        </option>
+      </select>
+      <pre><code><node-view-content /></code></pre>
     </div>
     <!-- 一般節點 (Paragraph, Heading) -->
     <node-view-content v-else class="content-runtime" :as="contentTag" />
@@ -62,11 +75,23 @@ export default {
       isFocused: false,
       showMenu: false, // 控制選單顯示
       isInsideList: false,
+      languages: ['javascript', 'css', 'html', 'typescript', 'python', 'markdown'],
     }
   },
   computed: {
     isTable() {
       return this.node.type.name === 'table'
+    },
+    isCodeBlock() {
+      return this.node.type.name === 'codeBlock'
+    },
+    selectedLanguage: {
+      get() {
+        return this.node.attrs.language
+      },
+      set(language) {
+        this.updateAttributes({ language })
+      },
     },
     // 動態決定渲染的標籤 (p, h1, h2, h3...)
     contentTag() {
@@ -355,6 +380,28 @@ export default {
     flex: 1;
     width: 100%;
     outline: none;
+  }
+
+  .code-block-container {
+    position: relative;
+
+    .code-lang-select {
+      position: absolute;
+      top: 2rem;
+      right: 0.5rem;
+      background: rgba(255, 255, 255, 0.1);
+      color: #999;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 2px 4px;
+      font-size: 0.7rem;
+      cursor: pointer;
+      z-index: 10;
+      
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+    }
   }
 }
 </style>

@@ -84,6 +84,7 @@ export default {
   max-width: 800px;
   // 關鍵：左側 padding 必須與 BlockSideMenu 的位移對應
   padding-left: 54px;
+  padding-right: 24px;
   border: 1px solid #e1e1e1;
   border-radius: 8px;
 }
@@ -169,7 +170,7 @@ export default {
   // 行內代碼
   code {
     background: rgba(135, 131, 120, 0.15);
-    color: #eb5757;
+    color: #ffffff;
     padding: 0.2em 0.4em;
     border-radius: 3px;
     font-size: 85%;

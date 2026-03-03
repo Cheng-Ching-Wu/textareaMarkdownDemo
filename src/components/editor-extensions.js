@@ -12,7 +12,7 @@ import { VueNodeViewRenderer } from '@tiptap/vue-2'
 import { common, createLowlight } from 'lowlight'
 
 // 組件匯入
-import CodeBlockComponent from './CodeBlockComponent.vue'
+// import CodeBlockComponent from './CodeBlockComponent.vue'
 import RowWrapper from './RowWrapper.vue' // 直接在此匯入 Wrapper
 import SlashCommands from './slash-commands-extension.js'
 
@@ -37,7 +37,7 @@ export const getExtensions = () => {
 
     // 3. 程式碼高亮
     CodeBlockLowlight.extend({
-      addNodeView() { return VueNodeViewRenderer(CodeBlockComponent) },
+      addNodeView() { return VueNodeViewRenderer(RowWrapper) },
     }).configure({ lowlight }),
 
     // 4. 表格與清單
