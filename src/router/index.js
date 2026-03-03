@@ -19,7 +19,7 @@ const routes = [
   {
     path: '/tiptap',
     name: 'tiptap',
-    component: () => import('../components/tiptopView.vue')
+    component: () => import('../components/tiptap/tiptapView.vue')
   }
 ];
 

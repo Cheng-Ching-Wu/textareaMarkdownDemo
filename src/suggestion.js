@@ -1,7 +1,7 @@
 import { VueRenderer } from '@tiptap/vue-2'
 import tippy from 'tippy.js'
 import 'tippy.js/dist/tippy.css' // 務必引入 tippy 樣式
-import CommandsList from '@/components/CommandsList.vue'
+import CommandsList from '@/components/tiptap/CommandsList.vue'
 
 export default {
   items: ({ query }) => {
