@@ -78,6 +78,7 @@ export default {
   padding: 20px;
   border-radius: 12px;
   background: #fff;
+  margin-top: 12px;
 }
 
 /* 讓編輯區域稍微大一點 */

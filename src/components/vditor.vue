@@ -78,6 +78,7 @@ export default {
 .vditor-wrapper {
   text-align: left;
   width: 100%;
+  padding: 12px;
 }
 
 /* 確保編輯器樣式符合專案風格 */

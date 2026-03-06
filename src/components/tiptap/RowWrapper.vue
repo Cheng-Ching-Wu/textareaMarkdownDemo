@@ -44,10 +44,18 @@
     </div>
     
     <!-- 針對 Table 的特殊渲染結構：必須包含 table/tbody 標籤 -->
-    <div v-if="isTable" class="content-runtime" style="overflow-x: auto">
-      <table style="min-width: 100%">
-        <node-view-content as="tbody" />
-      </table>
+    <div v-if="isTable" class="content-runtime" style="position: relative; overflow-x: auto" @mousemove="onTableMouseMove" @mouseleave="hoverResizeHandle = null">
+        <table style="min-width: 100%; width: fit-content; table-layout: fixed; border-collapse: collapse" ref="table">
+            <colgroup>
+                <col v-for="(w, i) in displayColWidths" :key="i" :style="{ width: w ? w + 'px' : '' }" />
+            </colgroup>
+            <node-view-content as="tbody" />
+        </table>
+        <div v-if="hoverResizeHandle || isResizing"
+            class="table-resize-handle"
+            :style="{ left: (isResizing ? resizeState.currentLeft : hoverResizeHandle.left) + 'px' }"
+            @mousedown.stop.prevent="startResize"
+        ></div>
     </div>
     <!-- 針對 Code Block 的特殊渲染結構 -->
     <div v-else-if="isCodeBlock" class="code-block-container content-runtime">
@@ -76,6 +84,9 @@ export default {
       showMenu: false, // 控制選單顯示
       isInsideList: false,
       languages: ['javascript', 'css', 'html', 'typescript', 'python', 'markdown'],
+      hoverResizeHandle: null,
+      isResizing: false,
+      resizeState: null,
     }
   },
   computed: {
@@ -102,6 +113,22 @@ export default {
     },
     headingClass() {
       return ''
+    },
+    modelColWidths() {
+      if (!this.isTable) return []
+      const firstRow = this.node.content.firstChild
+      if (!firstRow) return []
+      const widths = []
+      firstRow.content.forEach(cell => {
+        widths.push(cell.attrs.colwidth && cell.attrs.colwidth.length ? cell.attrs.colwidth[0] : null)
+      })
+      return widths
+    },
+    displayColWidths() {
+      if (this.isResizing && this.resizeState) {
+        return this.resizeState.currentWidths
+      }
+      return this.modelColWidths
     }
   },
   mounted() {
@@ -325,6 +352,99 @@ export default {
           }
         }, 0)
       }
+    },
+    onTableMouseMove(e) {
+      if (this.isResizing || !this.isTable) return
+      const table = this.$refs.table
+      if (!table) return
+      
+      const rect = table.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      
+      const row = table.querySelector('tr')
+      if (!row) return
+      
+      let currentX = 0
+      const cells = Array.from(row.children)
+      for (let i = 0; i < cells.length; i++) {
+        currentX += cells[i].offsetWidth
+        // 偵測是否接近欄位右邊界 (5px 緩衝區)
+        if (Math.abs(x - currentX) < 5) {
+          this.hoverResizeHandle = { index: i, left: currentX }
+          return
+        }
+      }
+      this.hoverResizeHandle = null
+    },
+    startResize(e) {
+      if (!this.hoverResizeHandle) return
+      this.isResizing = true
+      
+      // 關鍵修正：取得當前所有欄位的「實際像素寬度」，確保拖曳時所有欄位都有明確數值
+      const table = this.$refs.table
+      const firstRow = table.querySelector('tr')
+      const cells = Array.from(firstRow.children)
+      const currentWidths = cells.map(c => c.offsetWidth)
+
+      this.resizeState = {
+        index: this.hoverResizeHandle.index,
+        startX: e.clientX,
+        startLeft: this.hoverResizeHandle.left,
+        startWidths: currentWidths,
+        currentWidths: currentWidths,
+        currentLeft: this.hoverResizeHandle.left
+      }
+      document.addEventListener('mousemove', this.onResizeMove)
+      document.addEventListener('mouseup', this.onResizeEnd)
+    },
+    onResizeMove(e) {
+      if (!this.resizeState) return
+      const dx = e.clientX - this.resizeState.startX
+      
+      // 1. 更新當前欄位寬度
+      const newWidths = [...this.resizeState.startWidths]
+      newWidths[this.resizeState.index] = Math.max(20, newWidths[this.resizeState.index] + dx)
+      this.resizeState.currentWidths = newWidths
+      
+      // 2. 更新把手位置 (跟隨新的欄位邊界)
+      let newLeft = 0
+      for (let i = 0; i <= this.resizeState.index; i++) {
+        newLeft += newWidths[i]
+      }
+      this.resizeState.currentLeft = newLeft
+    },
+    onResizeEnd() {
+      if (!this.resizeState) return
+      
+      // 將最終寬度寫入所有欄位
+      this.updateAllColumnWidths(this.resizeState.currentWidths)
+      
+      this.isResizing = false
+      this.resizeState = null
+      this.hoverResizeHandle = null
+      document.removeEventListener('mousemove', this.onResizeMove)
+      document.removeEventListener('mouseup', this.onResizeEnd)
+    },
+    updateAllColumnWidths(widths) {
+      const { tr } = this.editor.state;
+      const tableStartPos = this.getPos();
+
+      // 使用 node.forEach 遍歷所有 row，此方法比手動計算位置更可靠
+      this.node.forEach((rowNode, rowOffset) => {
+        // 遍歷該 row 中的所有 cell
+        rowNode.forEach((cellNode, cellOffset, cellIndex) => {
+          const cellAbsPos = tableStartPos + 1 + rowOffset + 1 + cellOffset;
+          const newWidth = widths[cellIndex];
+
+          if (newWidth !== undefined && cellNode.attrs.colwidth?.[0] !== newWidth) {
+            tr.setNodeMarkup(cellAbsPos, null, { ...cellNode.attrs, colwidth: [newWidth] });
+          }
+        });
+      });
+
+      if (tr.docChanged) {
+        this.editor.view.dispatch(tr);
+      }
     }
   }
 }
@@ -459,6 +579,17 @@ export default {
         background: rgba(255, 255, 255, 0.2);
       }
     }
+  }
+
+  .table-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background-color: #2383e2;
+    cursor: col-resize;
+    z-index: 20;
+    transform: translateX(-2px); /* 讓把手居中於格線 */
   }
 }
 </style>

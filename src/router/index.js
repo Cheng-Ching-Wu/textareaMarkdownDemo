@@ -8,6 +8,11 @@ Vue.use(VueRouter);
 const routes = [
   {
     path: '/',
+    name: 'tiptap',
+    component: () => import('../components/tiptap/tiptapView.vue')
+  },
+  {
+    path: '/vditor',
     name: 'vditor',
     component: vditor
   },
@@ -16,11 +21,6 @@ const routes = [
     name: 'editorjs',
     component: () => import('../components/EditorjsView.vue')
   },
-  {
-    path: '/tiptap',
-    name: 'tiptap',
-    component: () => import('../components/tiptap/tiptapView.vue')
-  }
 ];
 
 const router = new VueRouter({

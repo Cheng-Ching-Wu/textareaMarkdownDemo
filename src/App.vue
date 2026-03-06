@@ -1,12 +1,9 @@
 <template>
   <div id="app">
-    <img alt="Vue logo" src="./assets/logo.png">
-    <div>
-      <router-link to="/">vditor</router-link>
-      /
+    <div class="nav-menu">
+      <router-link to="/">tiptap</router-link>
+      <router-link to="/vditor">vditor</router-link>
       <router-link to="/editorjs">editorjs</router-link>
-      /
-      <router-link to="/tiptap">tiptap</router-link>
     </div>
     <div>
       <router-view></router-view>
@@ -29,7 +26,7 @@ export default {
 }
 </script>
 
-<style>
+<style lang="scss" scoped>
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -37,5 +34,30 @@ export default {
   text-align: center;
   color: #2c3e50;
   margin-top: 60px;
+}
+
+.nav-menu a {
+  text-decoration: none;
+  color: #2c3e50;
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin: 0 4px;
+  transition: background-color 0.2s;
+}
+
+.nav-menu a:hover {
+  background-color: #e2e8f0;
+}
+
+.nav-menu .router-link-exact-active {
+  color: #fff;
+  background-color: #1782ec;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-weight: bold;
+
+  &:hover {
+    background-color: #0b5dc7;
+  }
 }
 </style>
