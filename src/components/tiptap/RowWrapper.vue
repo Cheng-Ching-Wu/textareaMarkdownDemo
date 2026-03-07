@@ -10,37 +10,15 @@
 
       <!-- 區塊功能選單 (Block Menu) -->
       <div v-if="showMenu" class="block-menu-overlay" @click="closeMenu"></div>
-      <div v-if="showMenu" class="block-menu">
-        <div class="menu-item delete-item" @click="removeNode">
-          <span class="icon">🗑️</span> 刪除
-        </div>
-        <div class="menu-divider"></div>
-        <div class="menu-label">轉換為...</div>
-        <div class="menu-item" @click="turnInto('paragraph')">
-          <span class="icon">T</span> 一般文字
-        </div>
-        <div class="menu-item" @click="turnInto('heading', { level: 1 })">
-          <span class="icon">H1</span> 標題 1
-        </div>
-        <div class="menu-item" @click="turnInto('heading', { level: 2 })">
-          <span class="icon">H2</span> 標題 2
-        </div>
-        <div class="menu-item" @click="turnInto('heading', { level: 3 })">
-          <span class="icon">H3</span> 標題 3
-        </div>
-        <div class="menu-item" @click="turnIntoList('bulletList')">
-          <span class="icon">●</span> 項目符號
-        </div>
-        <div class="menu-item" @click="turnIntoList('orderedList')">
-          <span class="icon">1.</span> 編號清單
-        </div>
-        <div class="menu-item" @click="insertTable">
-          <span class="icon">▦</span> 插入表格
-        </div>
-        <div class="menu-item" @click="turnInto('codeBlock')">
-          <span class="icon">&lt;&gt;</span> 程式碼
-        </div>
-      </div>
+      <CommandsList
+        v-if="showMenu"
+        class="block-menu-position"
+        :items="menuItems"
+        :command="handleMenuAction"
+        :showDelete="true"
+        menuLabel="轉換為..."
+        @delete="removeNode"
+      />
     </div>
     
     <!-- 針對 Table 的特殊渲染結構：必須包含 table/tbody 標籤 -->
@@ -74,9 +52,11 @@
 
 <script>
 import { nodeViewProps, NodeViewWrapper, NodeViewContent } from '@tiptap/vue-2'
+import CommandsList from './CommandsList.vue'
+import { MENU_ITEMS } from '@/menuItems'
 
 export default {
-  components: { NodeViewWrapper, NodeViewContent },
+  components: { NodeViewWrapper, NodeViewContent, CommandsList },
   props: nodeViewProps,
   data() {
     return {
@@ -87,6 +67,7 @@ export default {
       hoverResizeHandle: null,
       isResizing: false,
       resizeState: null,
+      menuItems: MENU_ITEMS,
     }
   },
   computed: {
@@ -216,6 +197,15 @@ export default {
       // 刪除時選中整個節點是正確的
       this.editor.chain().setNodeSelection(pos).deleteSelection().run()
       this.closeMenu()
+    },
+    handleMenuAction(item) {
+      if (item.action === 'turnInto') {
+        this.turnInto(item.type, item.attrs)
+      } else if (item.action === 'turnIntoList') {
+        this.turnIntoList(item.type)
+      } else if (item.action === 'insertTable') {
+        this.insertTable()
+      }
     },
     turnInto(type, attrs = {}) {
       const pos = this.getPos()
@@ -494,57 +484,11 @@ export default {
   }
 
   // 選單樣式
-  .block-menu {
+  .block-menu-position {
     position: absolute;
     top: 28px;
     left: 0;
-    background: white;
-    border: 1px solid #e1e1e1;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    border-radius: 4px;
-    padding: 4px 0;
-    width: 160px;
     z-index: 100;
-    display: flex;
-    flex-direction: column;
-    text-align: left;
-
-    .menu-item {
-      display: flex;
-      align-items: center;
-      padding: 6px 12px;
-      font-size: 14px;
-      color: #37352f;
-      cursor: pointer;
-      transition: background 0.1s;
-
-      &:hover {
-        background-color: #efefef;
-      }
-
-      .icon {
-        margin-right: 8px;
-        width: 20px;
-        text-align: center;
-        font-size: 12px;
-        color: #787774;
-      }
-      
-      &.delete-item { color: #eb5757; .icon { color: #eb5757; } }
-    }
-
-    .menu-divider {
-      height: 1px;
-      background: #e1e1e1;
-      margin: 4px 0;
-    }
-
-    .menu-label {
-      font-size: 11px;
-      color: #999;
-      padding: 4px 12px;
-      font-weight: 600;
-    }
   }
   
   .block-menu-overlay {
