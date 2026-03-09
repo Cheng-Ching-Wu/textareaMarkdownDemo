@@ -151,13 +151,15 @@ export default {
   },
   methods: {
     checkFocus() {
-      // 如果編輯器本身沒有聚焦，則不顯示拖曳點 (模仿 Notion 行為)
-      // 移除 isFocused 檢查，避免在點擊選單或插入表格等操作導致焦點暫時丟失時，拖曳點消失
-      // 只要選取範圍在當前節點內，就視為聚焦
-
       // 如果選單開啟，強制顯示
       if (this.showMenu) {
         this.isFocused = true
+        return
+      }
+
+      // 如果編輯器沒有聚焦，則不顯示拖曳點
+      if (!this.editor.isFocused) {
+        this.isFocused = false
         return
       }
 
