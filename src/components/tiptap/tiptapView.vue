@@ -196,7 +196,6 @@ export default {
     border-collapse: collapse;
     table-layout: fixed;
     width: 100%;
-    margin: 1em 0;
     overflow: hidden;
 
     td, th {

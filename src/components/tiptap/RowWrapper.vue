@@ -2,7 +2,7 @@
   <node-view-wrapper class="notion-row-container" :class="{ 'is-focused': isFocused, 'is-inside-list': isInsideList }">
     <div class="side-controls" contenteditable="false">
       <!-- 加入 @click 事件 -->
-      <div class="drag-handle" draggable="true" @dragstart="onDragStart" @dragend="onDragEnd" @click="toggleMenu" @mousedown="onMouseDown">
+      <div class="drag-handle" draggable="true" @dragstart="onDragStart" @dragend="onDragEnd" @click="handleDragClick" @mousedown="onMouseDown">
         <svg width="12" height="18" viewBox="0 0 12 18">
           <path d="M4 2h2v2H4V2zm0 5h2v2H4V7zm0 5h2v2H4v-2zm4-10h2v2H8V2zm0 5h2v2H8V7zm0 5h2v2H8v-2z" fill="rgba(55, 53, 47, 0.4)"/>
         </svg>
@@ -22,8 +22,22 @@
     </div>
     
     <!-- 針對 Table 的特殊渲染結構：必須包含 table/tbody 標籤 -->
-    <div v-if="isTable" class="content-runtime" style="position: relative; overflow-x: auto" @mousemove="onTableMouseMove" @mouseleave="hoverResizeHandle = null">
-        <table style="min-width: 100%; width: fit-content; table-layout: fixed; border-collapse: collapse" ref="table">
+    <div v-if="isTable" class="table-block-wrapper" style="position: relative; width: 100%; min-width: 0;">
+      <div class="content-runtime" style="overflow-x: auto; overflow-y: hidden; padding: 16px 24px 24px 16px; position: relative;" @mousemove="onTableMouseMove" @mouseleave="hoverResizeHandle = null">
+        <!-- 表格行列控制項 -->
+        <div class="table-controls" contenteditable="false">
+          <div class="table-axis x-axis">
+            <div v-for="(w, i) in tableMap.cols" :key="'col-'+i" class="axis-handle" :class="{ 'is-active': activeTableMenu && activeTableMenu.type === 'col' && activeTableMenu.index === i }" :style="{ width: w + 'px' }">
+              <div class="handle-trigger" @click="showTableMenu('col', i, $event)"><div class="dots"></div></div>
+            </div>
+          </div>
+          <div class="table-axis y-axis">
+            <div v-for="(h, i) in tableMap.rows" :key="'row-'+i" class="axis-handle" :class="{ 'is-active': activeTableMenu && activeTableMenu.type === 'row' && activeTableMenu.index === i }" :style="{ height: h + 'px' }">
+              <div class="handle-trigger" @click="showTableMenu('row', i, $event)"><div class="dots"></div></div>
+            </div>
+          </div>
+        </div>
+        <table style="width: fit-content; table-layout: fixed; border-collapse: collapse" ref="table">
             <colgroup>
                 <col v-for="(w, i) in displayColWidths" :key="i" :style="{ width: w ? w + 'px' : '' }" />
             </colgroup>
@@ -31,9 +45,21 @@
         </table>
         <div v-if="hoverResizeHandle || isResizing"
             class="table-resize-handle"
-            :style="{ left: (isResizing ? resizeState.currentLeft : hoverResizeHandle.left) + 'px' }"
+            :style="{ left: ((isResizing ? resizeState.currentLeft : hoverResizeHandle.left) + 16) + 'px', height: tableHeight + 'px', top: '16px' }"
             @mousedown.stop.prevent="startResize"
         ></div>
+        <!-- 新增行列按鈕 (移回滾動容器內部，避免遮擋滾動條並跟隨滾動) -->
+        <div class="add-button-trigger right" 
+              :style="{ left: (tableWidth + 16 + 4) + 'px', top: '16px', height: tableHeight + 'px' }"
+              @click="addColumnAfterLast">
+          <div class="plus-icon">+</div>
+        </div>
+        <div class="add-button-trigger bottom" 
+              :style="{ top: (tableHeight + 16 + 4) + 'px', left: '16px', width: tableWidth + 'px' }"
+              @click="addRowAfterLast">
+          <div class="plus-icon">+</div>
+        </div>
+      </div>
     </div>
     <!-- 針對 Code Block 的特殊渲染結構 -->
     <div v-else-if="isCodeBlock" class="code-block-container content-runtime">
@@ -47,6 +73,16 @@
     </div>
     <!-- 一般節點 (Paragraph, Heading) -->
     <node-view-content v-else class="content-runtime" :class="headingClass" :as="contentTag" />
+
+    <!-- 表格專用選單 -->
+    <div v-if="activeTableMenu" class="block-menu-overlay" @click="closeTableMenu"></div>
+    <CommandsList
+      v-if="activeTableMenu"
+      class="block-menu-position"
+      :style="{ top: activeTableMenu.top + 'px', left: activeTableMenu.left + 'px', position: 'fixed', marginTop: 0 }"
+      :items="tableMenuItems"
+      :command="handleTableMenuAction"
+    />
   </node-view-wrapper>
 </template>
 
@@ -68,9 +104,25 @@ export default {
       isResizing: false,
       resizeState: null,
       menuItems: MENU_ITEMS,
+      tableMap: { cols: [], rows: [] },
+      activeTableMenu: null,
     }
   },
   computed: {
+    isInsideTable() {
+      const pos = this.getPos()
+      if (typeof pos !== 'number') {
+        return false
+      }
+      const $pos = this.editor.state.doc.resolve(pos)
+      // 從當前節點的父節點開始向上遍歷，檢查是否有 table 節點
+      for (let i = $pos.depth - 1; i > 0; i--) {
+        if ($pos.node(i).type.name === 'table') {
+          return true
+        }
+      }
+      return false
+    },
     isTable() {
       return this.node.type.name === 'table'
     },
@@ -101,7 +153,7 @@ export default {
       if (!firstRow) return []
       const widths = []
       firstRow.content.forEach(cell => {
-        widths.push(cell.attrs.colwidth && cell.attrs.colwidth.length ? cell.attrs.colwidth[0] : null)
+        widths.push(cell.attrs.colwidth && cell.attrs.colwidth.length ? cell.attrs.colwidth[0] : 200)
       })
       return widths
     },
@@ -110,7 +162,29 @@ export default {
         return this.resizeState.currentWidths
       }
       return this.modelColWidths
-    }
+    },
+    tableMenuItems() {
+      if (!this.activeTableMenu) return []
+      if (this.activeTableMenu.type === 'col') {
+        return [
+          { title: '向左插入欄', action: 'addColumnBefore' },
+          { title: '向右插入欄', action: 'addColumnAfter' },
+          { title: '刪除此欄', action: 'deleteColumn', style: 'color: red' }
+        ]
+      } else {
+        return [
+          { title: '向上插入列', action: 'addRowBefore' },
+          { title: '向下插入列', action: 'addRowAfter' },
+          { title: '刪除此列', action: 'deleteRow', style: 'color: red' }
+        ]
+      }
+    },
+    tableWidth() {
+      return this.tableMap.cols.reduce((a, b) => a + b, 0)
+    },
+    tableHeight() {
+      return this.tableMap.rows.reduce((a, b) => a + b, 0)
+    },
   },
   mounted() {
     // 監聽選取範圍變更，判斷是否聚焦在當前區塊
@@ -133,6 +207,9 @@ export default {
       }
     }
     initCheck()
+    if (this.isTable) {
+      this.updateTableMap()
+    }
   },
   watch: {
     // 監聽 node 變化，確保當節點類型改變 (如轉為表格) 時，能重新檢查聚焦狀態
@@ -141,6 +218,11 @@ export default {
         this.checkFocus()
         this.checkListStatus()
       })
+    }
+  },
+  updated() {
+    if (this.isTable) {
+      this.updateTableMap()
     }
   },
   beforeDestroy() {
@@ -187,6 +269,13 @@ export default {
         this.checkFocus()
         this.checkListStatus()
       })
+    },
+    handleDragClick() {
+      // 如果是在表格內部，則不顯示區塊選單 (但表格本身可以顯示)
+      if (this.isInsideTable) {
+        return
+      }
+      this.toggleMenu()
     },
     toggleMenu() {
       this.showMenu = !this.showMenu
@@ -437,7 +526,82 @@ export default {
       if (tr.docChanged) {
         this.editor.view.dispatch(tr);
       }
-    }
+    },
+    updateTableMap() {
+      const table = this.$refs.table
+      if (!table) return
+      
+      const rows = Array.from(table.querySelectorAll('tr'))
+      const rowHeights = rows.map(r => r.offsetHeight)
+      
+      const firstRow = rows[0]
+      const colWidths = firstRow ? Array.from(firstRow.children).map(c => c.offsetWidth) : []
+      
+      if (JSON.stringify(this.tableMap.rows) !== JSON.stringify(rowHeights) ||
+          JSON.stringify(this.tableMap.cols) !== JSON.stringify(colWidths)) {
+        this.tableMap = { rows: rowHeights, cols: colWidths }
+      }
+    },
+    showTableMenu(type, index, event) {
+      // 設定選單位置 (使用 fixed positioning)
+      this.activeTableMenu = {
+        type,
+        index,
+        top: event.clientY + 10,
+        left: event.clientX
+      }
+      
+      // 選中對應的欄或列，以便執行命令
+      this.setSelectionInTable(type, index)
+    },
+    closeTableMenu() {
+      this.activeTableMenu = null
+    },
+    handleTableMenuAction(item) {
+      this.editor.chain().focus()[item.action]().run()
+      this.closeTableMenu()
+    },
+    setSelectionInTable(type, index) {
+      const table = this.$refs.table
+      if (!table) return
+      const rows = table.querySelectorAll('tr')
+      let cell = null
+      if (type === 'col') {
+        const firstRow = rows[0]
+        if (firstRow) cell = firstRow.children[index]
+      } else {
+        const row = rows[index]
+        if (row) cell = row.children[0]
+      }
+      if (cell) {
+        const pos = this.editor.view.posAtDOM(cell, 0)
+        this.editor.chain().focus().setTextSelection(pos).run()
+      }
+    },
+    addColumnAfterLast() {
+      const table = this.$refs.table
+      if (!table) return
+      const rows = table.querySelectorAll('tr')
+      if (rows.length === 0) return
+      const firstRow = rows[0]
+      const lastCell = firstRow.lastElementChild
+      if (lastCell) {
+        const pos = this.editor.view.posAtDOM(lastCell, 0)
+        this.editor.chain().focus().setTextSelection(pos).addColumnAfter().run()
+      }
+    },
+    addRowAfterLast() {
+      const table = this.$refs.table
+      if (!table) return
+      const rows = table.querySelectorAll('tr')
+      if (rows.length === 0) return
+      const lastRow = rows[rows.length - 1]
+      const firstCell = lastRow.firstElementChild
+      if (firstCell) {
+        const pos = this.editor.view.posAtDOM(firstCell, 0)
+        this.editor.chain().focus().setTextSelection(pos).addRowAfter().run()
+      }
+    },
   }
 }
 </script>
@@ -466,7 +630,6 @@ export default {
     justify-content: center;
     opacity: 0;
     transition: opacity 0.2s;
-    z-index: 10;
   }
 
   // 當在清單內時，將把手往左推，避免與項目符號重疊
@@ -501,7 +664,6 @@ export default {
 
   .content-runtime {
     flex: 1;
-    width: 100%;
     outline: none;
   }
 
@@ -536,6 +698,142 @@ export default {
     cursor: col-resize;
     z-index: 20;
     transform: translateX(-2px); /* 讓把手居中於格線 */
+  }
+
+  .table-controls {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .table-axis {
+    display: flex;
+    position: absolute;
+  }
+  .table-axis.x-axis {
+    left: 16px;
+    top: 0;
+    height: 16px;
+    transform: translateY(50%);
+
+    .axis-handle {
+      justify-content: center;
+      align-items: flex-end;
+      z-index: 999;
+    }
+
+    .handle-trigger {
+      margin-bottom: 2px;
+    }
+
+    .dots {
+      transform: rotate(90deg);
+    }
+  }
+  .table-axis.y-axis {
+    top: 16px;
+    left: 0;
+    width: 16px;
+    flex-direction: column;
+    transform: translateX(50%);
+
+    .axis-handle {
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .handle-trigger {
+      margin-right: 2px;
+    }
+  }
+  .axis-handle {
+    pointer-events: auto;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.2s ease-in-out;
+
+    &:hover,
+    &.is-active {
+      opacity: 1;
+    }
+  }
+  .handle-trigger {
+    width: 14px;
+    height: 14px;
+    background-color: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: all 0.2s;
+
+    &:hover {
+      background-color: #f0f0f0;
+      border-color: #ccc;
+    }
+
+    .dots {
+      width: 2px;
+      height: 2px;
+      background-color: #999;
+      border-radius: 50%;
+      box-shadow: 0 -3px 0 #999, 0 3px 0 #999;
+    }
+  }
+
+  .add-button-trigger {
+    border: 1px solid #c5c5c5;
+    border-radius: 3px;
+    position: absolute;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+    cursor: pointer;
+    
+    .plus-icon {
+      background: #eee;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #666;
+      line-height: 1;
+      &:hover {
+          background: #ddd;
+          color: #333;
+      }
+    }
+
+    &.bottom {
+      
+      .plus-icon {
+        width: 100%;
+        height: 16px;
+      }
+    }
+
+    &.right {
+
+      .plus-icon {
+        width: 16px;
+        height: 100%;
+      }
+    }
+
+    &:hover {
+      opacity: 1;
+    }
   }
 }
 </style>
