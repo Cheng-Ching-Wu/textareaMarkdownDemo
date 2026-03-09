@@ -103,6 +103,7 @@ export default {
   flex-direction: column;
   text-align: left;
   overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif;
 
   .menu-item {
     display: flex;
@@ -127,6 +128,18 @@ export default {
       display: flex;
       align-items: center;
       justify-content: center;
+
+      svg {
+        width: 100%;
+        height: 100%;
+        fill: currentColor;
+      }
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
     }
 
     &.delete-item {
