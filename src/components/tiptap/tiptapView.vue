@@ -36,6 +36,9 @@ export default {
     // 嚴格比對內容，防止在協作或複雜更新時游標跳轉
     value(newValue) {
       if (!this.editor) return
+      // 優化：先簡單比對字串，若完全相同則不執行 getHTML (getHTML 在大文件下較慢)
+      if (this.editor.getHTML() === newValue) return
+
       const isSame = this.editor.getHTML() === newValue
       if (!isSame) {
         this.editor.commands.setContent(newValue, false)
@@ -50,20 +53,8 @@ export default {
       this.editor = new Editor({
         content: this.value,
         // --- FIX START ---
-        // 攔截並修改擴充套件陣列，強制 Table 使用 RowWrapper
-        extensions: getExtensions().map(ext => {
-          // 找到名為 'table' 的擴充套件
-          if (ext.name === 'table') {
-            // 使用 .extend() 來新增 NodeView
-            return ext.extend({
-              addNodeView() {
-                return VueNodeViewRenderer(RowWrapper)
-              },
-            }).configure(ext.options) // 保持原有的 options (例如 resizable)
-          }
-          // 對於其他擴充套件，保持原樣
-          return ext
-        }),
+        // 優化：將 NodeView 的配置邏輯抽離，使其更清晰
+        extensions: this.processExtensions(getExtensions()),
         // --- FIX END ---
         // 當內容變動時通知父組件 (支援 v-model)
         onUpdate: ({ editor }) => {
@@ -75,6 +66,22 @@ export default {
         }
       })
     },
+    processExtensions(extensions) {
+      return extensions.map(ext => {
+        // 針對 Table 擴充功能注入 RowWrapper NodeView
+        if (ext.name === 'table') {
+          return ext.extend({
+            addNodeView() {
+              return VueNodeViewRenderer(RowWrapper)
+            },
+          }).configure(ext.options)
+        }
+        // 如果未來有其他 Block (如 Paragraph, Heading) 也要套用 Notion 風格的把手，
+        // 可以在這裡增加判斷邏輯，統一回傳 VueNodeViewRenderer(RowWrapper)
+        
+        return ext
+      })
+    }
   },
   beforeDestroy() {
     if (this.editor) {
